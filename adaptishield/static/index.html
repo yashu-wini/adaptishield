@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AdaptiShield — Privacy Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="shell">
+  <!-- ─── Sidebar ─── -->
+  <div class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon"><i class="ti ti-shield-lock"></i></div>
+      <div><div class="logo-name">AdaptiShield</div><div class="logo-sub">Privacy Intelligence v1.0</div></div>
+    </div>
+    <span class="nav-section">Monitor</span>
+    <div class="nav-item active" data-page="overview"><i class="ti ti-layout-dashboard"></i>Overview</div>
+    <div class="nav-item" data-page="analyze"><i class="ti ti-scan"></i>Analyze</div>
+    <span class="nav-section">Operations</span>
+    <div class="nav-item" data-page="pipeline"><i class="ti ti-activity"></i>Pipeline</div>
+    <div class="nav-item" data-page="entities"><i class="ti ti-fingerprint"></i>Entities</div>
+    <div class="nav-item" data-page="anonymization"><i class="ti ti-ghost"></i>Anonymization</div>
+    <span class="nav-section">System</span>
+    <div class="nav-item" data-page="audit"><i class="ti ti-notes"></i>Audit logs</div>
+    <div class="sidebar-footer">
+      <div class="status-pill"><div class="status-dot"></div>Pipeline ready</div>
+    </div>
+  </div>
+
+  <!-- ─── Main Content ─── -->
+  <div class="main">
+    <!-- ─── OVERVIEW PAGE ─── -->
+    <div class="page active" id="page-overview">
+      <div class="topbar"><div class="page-title">Overview</div><div class="topbar-right"><span class="health-badge" id="healthBadge"><i class="ti ti-heart-rate-monitor"></i> Checking...</span></div></div>
+
+      <div class="metrics">
+        <div class="metric glass"><div class="metric-icon" style="background:#EAF3DE;color:#3B6D11"><i class="ti ti-file-analytics"></i></div><div><div class="metric-label">Documents processed</div><div class="metric-value" id="mDocsProcessed">0</div></div></div>
+        <div class="metric glass"><div class="metric-icon" style="background:#E6F1FB;color:#185FA5"><i class="ti ti-fingerprint"></i></div><div><div class="metric-label">PII entities found</div><div class="metric-value" id="mEntitiesFound">0</div></div></div>
+        <div class="metric glass"><div class="metric-icon" style="background:#FAEEDA;color:#854F0B"><i class="ti ti-alert-triangle"></i></div><div><div class="metric-label">Avg risk score</div><div class="metric-value" id="mAvgRisk">—</div></div></div>
+        <div class="metric glass"><div class="metric-icon" style="background:#EEEDFE;color:#534AB7"><i class="ti ti-clock"></i></div><div><div class="metric-label">Avg latency</div><div class="metric-value" id="mAvgLatency">—</div></div></div>
+      </div>
+
+      <div class="two-col">
+        <div class="card glass">
+          <div class="card-header"><span><i class="ti ti-list-check"></i> Recent analyses</span><span class="card-hint" id="recentCount">0 runs</span></div>
+          <div class="recent-list" id="recentList"><div class="empty-state"><i class="ti ti-inbox"></i><span>No analyses yet. Go to Analyze to start.</span></div></div>
+        </div>
+        <div class="card glass">
+          <div class="card-header"><span><i class="ti ti-chart-donut-3"></i> Entity type breakdown</span><span class="card-hint">all time</span></div>
+          <div class="chart-area" id="entityBreakdownChart"><div class="empty-state"><i class="ti ti-chart-pie-off"></i><span>Run an analysis to see data.</span></div></div>
+        </div>
+      </div>
+
+      <div class="card glass">
+        <div class="card-header"><span><i class="ti ti-notes"></i> Audit log</span><span class="card-hint">recent events</span></div>
+        <div class="audit-list" id="auditList"><div class="empty-state"><i class="ti ti-list"></i><span>Audit events will appear here.</span></div></div>
+      </div>
+    </div>
+
+    <!-- ─── ANALYZE PAGE ─── -->
+    <div class="page" id="page-analyze">
+      <div class="topbar"><div class="page-title">Analyze Document</div></div>
+
+      <div class="card glass input-card">
+        <div class="card-header"><span><i class="ti ti-text-scan-2"></i> Input text</span>
+          <div class="sample-btns">
+            <button class="btn-sm" onclick="loadSample(0)">Sample: Personal</button>
+            <button class="btn-sm" onclick="loadSample(1)">Sample: KYC</button>
+            <button class="btn-sm" onclick="loadSample(2)">Sample: Critical</button>
+          </div>
+        </div>
+        <textarea id="textInput" placeholder="Paste or type text containing PII... e.g. Name: Priya Mehta | Aadhaar: 2345 6789 0123 | Email: priya@gmail.com" rows="5"></textarea>
+        <div class="input-actions">
+          <div class="char-count"><span id="charCount">0</span> characters</div>
+          <button id="analyzeBtn" class="btn-primary"><i class="ti ti-bolt"></i> Run pipeline</button>
+        </div>
+      </div>
+
+      <!-- Results area (hidden until analysis runs) -->
+      <div id="resultsArea" style="display:none">
+        <!-- Risk banner -->
+        <div class="risk-banner" id="riskBanner">
+          <div class="risk-left"><div class="risk-icon" id="riskIcon">🟢</div><div><div class="risk-level" id="riskLevel">LOW</div><div class="risk-sub" id="riskSub">No significant PII detected</div></div></div>
+          <div class="risk-stats">
+            <div class="risk-stat"><div class="risk-stat-val" id="rsScore">0</div><div class="risk-stat-lbl">Risk score</div></div>
+            <div class="risk-stat"><div class="risk-stat-val" id="rsEntities">0</div><div class="risk-stat-lbl">Entities</div></div>
+            <div class="risk-stat"><div class="risk-stat-val" id="rsTime">0ms</div><div class="risk-stat-lbl">Latency</div></div>
+            <div class="risk-stat"><div class="risk-stat-val" id="rsEncrypt">—</div><div class="risk-stat-lbl">Encrypted</div></div>
+          </div>
+        </div>
+
+        <!-- Pipeline steps -->
+        <div class="card glass">
+          <div class="card-header"><span><i class="ti ti-activity"></i> Pipeline execution</span><span class="card-hint" id="pipeHint">completed</span></div>
+          <div class="pipeline" id="pipelineSteps"></div>
+          <div class="detection-stats" id="detectionStats"></div>
+        </div>
+
+        <div class="two-col">
+          <!-- Entities -->
+          <div class="card glass">
+            <div class="card-header"><span><i class="ti ti-fingerprint"></i> Detected entities</span><span class="card-hint" id="entityCountHint">0 found</span></div>
+            <div class="entity-table" id="entityTable"></div>
+          </div>
+          <!-- Anonymization -->
+          <div class="card glass">
+            <div class="card-header"><span><i class="ti ti-ghost"></i> Anonymization map</span><span class="card-hint">policy applied</span></div>
+            <div class="anon-list" id="anonList"></div>
+          </div>
+        </div>
+
+        <!-- Text diff -->
+        <div class="two-col">
+          <div class="card glass">
+            <div class="card-header"><span><i class="ti ti-file-text"></i> Original text</span></div>
+            <div class="text-display" id="origText"></div>
+          </div>
+          <div class="card glass">
+            <div class="card-header"><span><i class="ti ti-lock"></i> Anonymized text</span></div>
+            <div class="text-display anonymized" id="anonText"></div>
+          </div>
+        </div>
+
+        <!-- Recommendations -->
+        <div class="card glass">
+          <div class="card-header"><span><i class="ti ti-bulb"></i> Compliance recommendations</span></div>
+          <div id="recommendations"></div>
+        </div>
+
+        <!-- Encryption -->
+        <div class="card glass" id="encryptionCard" style="display:none">
+          <div class="card-header"><span><i class="ti ti-lock-square"></i> AES-256-GCM encryption</span><span class="card-hint">authenticated</span></div>
+          <div class="encryption-info" id="encryptionInfo"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── PIPELINE PAGE ─── -->
+    <div class="page" id="page-pipeline">
+      <div class="topbar"><div class="page-title">Pipeline Architecture</div></div>
+      <div class="card glass">
+        <div class="card-header"><span><i class="ti ti-topology-star-3"></i> Processing stages</span></div>
+        <div class="arch-flow">
+          <div class="arch-stage"><div class="arch-num">1</div><div class="arch-body"><div class="arch-title">Ingestion</div><div class="arch-desc">PDF, DOCX, CSV, TXT parsing & Unicode normalization</div></div></div>
+          <div class="arch-arrow"><i class="ti ti-chevron-right"></i></div>
+          <div class="arch-stage"><div class="arch-num">2</div><div class="arch-body"><div class="arch-title">Hybrid Detection</div><div class="arch-desc">Regex + Transformer (DeBERTa-v3) + spaCy NER → Fusion Engine</div></div></div>
+          <div class="arch-arrow"><i class="ti ti-chevron-right"></i></div>
+          <div class="arch-stage"><div class="arch-num">3</div><div class="arch-body"><div class="arch-title">Context Validation</div><div class="arch-desc">Semantic window analysis, co-occurrence boosts, false-positive filtering</div></div></div>
+          <div class="arch-arrow"><i class="ti ti-chevron-right"></i></div>
+          <div class="arch-stage"><div class="arch-num">4</div><div class="arch-body"><div class="arch-title">Risk Scoring</div><div class="arch-desc">Σ(Weight × Confidence) → LOW / MEDIUM / HIGH / CRITICAL</div></div></div>
+          <div class="arch-arrow"><i class="ti ti-chevron-right"></i></div>
+          <div class="arch-stage"><div class="arch-num">5</div><div class="arch-body"><div class="arch-title">Anonymization</div><div class="arch-desc">MASK / TOKENIZE / REDACT based on sensitivity policy</div></div></div>
+          <div class="arch-arrow"><i class="ti ti-chevron-right"></i></div>
+          <div class="arch-stage"><div class="arch-num">6</div><div class="arch-body"><div class="arch-title">Encryption</div><div class="arch-desc">AES-256-GCM authenticated encryption with fresh nonce</div></div></div>
+        </div>
+      </div>
+      <div class="two-col">
+        <div class="card glass">
+          <div class="card-header"><span><i class="ti ti-regex"></i> Supported PII types (Indian)</span></div>
+          <div class="pii-grid">
+            <span class="pii-tag tag-critical">Aadhaar</span><span class="pii-tag tag-high">PAN</span><span class="pii-tag tag-high">Passport</span><span class="pii-tag tag-high">Voter ID</span><span class="pii-tag tag-med">Driving License</span><span class="pii-tag tag-med">UPI ID</span><span class="pii-tag tag-med">IFSC Code</span><span class="pii-tag tag-low">GST Number</span><span class="pii-tag tag-low">Pincode</span>
+          </div>
+        </div>
+        <div class="card glass">
+          <div class="card-header"><span><i class="ti ti-world"></i> Supported PII types (Generic)</span></div>
+          <div class="pii-grid">
+            <span class="pii-tag tag-critical">Password</span><span class="pii-tag tag-critical">Credit Card</span><span class="pii-tag tag-high">Bank Account</span><span class="pii-tag tag-high">Medical Record</span><span class="pii-tag tag-med">Email</span><span class="pii-tag tag-med">Phone</span><span class="pii-tag tag-med">IP Address</span><span class="pii-tag tag-low">Name</span><span class="pii-tag tag-low">URL</span><span class="pii-tag tag-low">Date</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── ENTITIES PAGE ─── -->
+    <div class="page" id="page-entities">
+      <div class="topbar"><div class="page-title">Entity Explorer</div></div>
+      <div class="card glass"><div class="card-header"><span><i class="ti ti-database"></i> All detected entities</span><span class="card-hint" id="allEntCount">across all analyses</span></div>
+        <div id="allEntitiesTable"><div class="empty-state"><i class="ti ti-database-off"></i><span>Run analyses from the Analyze page to populate this view.</span></div></div>
+      </div>
+    </div>
+
+    <!-- ─── ANONYMIZATION PAGE ─── -->
+    <div class="page" id="page-anonymization">
+      <div class="topbar"><div class="page-title">Anonymization Engine</div></div>
+      <div class="two-col">
+        <div class="card glass"><div class="card-header"><span><i class="ti ti-table"></i> Strategy policy</span></div>
+          <table class="policy-table"><thead><tr><th>Sensitivity</th><th>Strategy</th><th>Example</th></tr></thead><tbody>
+            <tr><td><span class="level-badge lvl-low">LOW</span></td><td>MASK</td><td class="mono">r***@gmail.com</td></tr>
+            <tr><td><span class="level-badge lvl-med">MEDIUM</span></td><td>TOKENIZE</td><td class="mono">PHONE_TOKEN_3F8A</td></tr>
+            <tr><td><span class="level-badge lvl-high">HIGH</span></td><td>REDACT</td><td class="mono">[PAN_REDACTED]</td></tr>
+            <tr><td><span class="level-badge lvl-critical">CRITICAL</span></td><td>REDACT</td><td class="mono">[AADHAAR_REDACTED]</td></tr>
+          </tbody></table>
+        </div>
+        <div class="card glass"><div class="card-header"><span><i class="ti ti-transform"></i> All transformations</span><span class="card-hint" id="allAnonCount">0</span></div>
+          <div id="allAnonTable"><div class="empty-state"><i class="ti ti-arrows-exchange"></i><span>Transformations will appear after analysis.</span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── AUDIT PAGE ─── -->
+    <div class="page" id="page-audit">
+      <div class="topbar"><div class="page-title">Audit Logs</div></div>
+      <div class="card glass"><div class="card-header"><span><i class="ti ti-history"></i> Full audit trail</span><span class="card-hint">compliance log</span></div>
+        <div class="audit-list full-audit" id="fullAuditList"><div class="empty-state"><i class="ti ti-list"></i><span>No audit entries yet.</span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>

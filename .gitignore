@@ -1,0 +1,36 @@
+# Docker (not using Docker for now)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.env/
+env/
+
+# pytest
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs (optional - remove this line if you want logs tracked)
+logs/
+
+# Temp files
+files.txt
+files_utf8.txt
