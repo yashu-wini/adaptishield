@@ -24,20 +24,42 @@ class SpacyDetector:
     Used as a supplementary signal alongside the transformer.
     """
 
+    # Fallback model order: try larger models first, fall back to smaller
+    FALLBACK_MODELS = ["en_core_web_lg", "en_core_web_md", "en_core_web_sm"]
+
     def __init__(self, model: str = "en_core_web_lg"):
         self.model_name = model
         self._nlp = None
+        self._load_attempted = False
 
     def _load(self):
-        if self._nlp is None:
-            try:
-                import spacy
-                self._nlp = spacy.load(self.model_name)
-                logger.info(f"[SpacyDetector] Loaded {self.model_name}")
-            except OSError:
-                logger.warning(f"[SpacyDetector] Model {self.model_name} not found. "
-                                f"Run: python -m spacy download {self.model_name}")
-                self._nlp = None
+        if self._nlp is not None or self._load_attempted:
+            return
+
+        self._load_attempted = True
+        try:
+            import spacy
+
+            # Try the requested model first, then fallbacks
+            models_to_try = [self.model_name] + [
+                m for m in self.FALLBACK_MODELS if m != self.model_name
+            ]
+
+            for model in models_to_try:
+                try:
+                    self._nlp = spacy.load(model)
+                    self.model_name = model
+                    logger.info(f"[SpacyDetector] Loaded {model}")
+                    return
+                except OSError:
+                    logger.debug(f"[SpacyDetector] Model {model} not available, trying next...")
+
+            logger.warning(
+                f"[SpacyDetector] No spaCy model found. "
+                f"Run: python -m spacy download en_core_web_sm"
+            )
+        except ImportError:
+            logger.warning("[SpacyDetector] spaCy is not installed.")
 
     def detect(self, text: str) -> list[dict]:
         self._load()

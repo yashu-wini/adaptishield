@@ -6,7 +6,7 @@
 <title>AdaptiShield — Privacy Intelligence</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+<link rel="stylesheet" href="https://unpkg.com/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -65,18 +65,52 @@
     <div class="page" id="page-analyze">
       <div class="topbar"><div class="page-title">Analyze Document</div></div>
 
-      <div class="card glass input-card">
+      <!-- Input mode toggle -->
+      <div class="input-mode-toggle">
+        <button class="mode-btn active" id="modeTextBtn"><i class="ti ti-text-scan-2"></i> Text Input</button>
+        <button class="mode-btn" id="modeFileBtn"><i class="ti ti-file-upload"></i> File Upload</button>
+      </div>
+
+      <!-- TEXT INPUT PANEL -->
+      <div class="card glass input-card" id="textInputPanel">
         <div class="card-header"><span><i class="ti ti-text-scan-2"></i> Input text</span>
           <div class="sample-btns">
-            <button class="btn-sm" onclick="loadSample(0)">Sample: Personal</button>
-            <button class="btn-sm" onclick="loadSample(1)">Sample: KYC</button>
-            <button class="btn-sm" onclick="loadSample(2)">Sample: Critical</button>
+            <button class="btn-sm" data-sample="0">Sample: Personal</button>
+            <button class="btn-sm" data-sample="1">Sample: KYC</button>
+            <button class="btn-sm" data-sample="2">Sample: Critical</button>
           </div>
         </div>
         <textarea id="textInput" placeholder="Paste or type text containing PII... e.g. Name: Priya Mehta | Aadhaar: 2345 6789 0123 | Email: priya@gmail.com" rows="5"></textarea>
         <div class="input-actions">
           <div class="char-count"><span id="charCount">0</span> characters</div>
           <button id="analyzeBtn" class="btn-primary"><i class="ti ti-bolt"></i> Run pipeline</button>
+        </div>
+      </div>
+
+      <!-- FILE UPLOAD PANEL -->
+      <div class="card glass input-card" id="fileInputPanel" style="display:none">
+        <div class="card-header"><span><i class="ti ti-file-upload"></i> Upload document</span>
+          <span class="card-hint">PDF, DOCX, TXT, CSV, XLSX</span>
+        </div>
+        <div class="file-drop-zone" id="fileDropZone">
+          <input type="file" id="fileInput" accept=".pdf,.docx,.txt,.csv,.xlsx" style="display:none">
+          <div class="drop-icon"><i class="ti ti-cloud-upload"></i></div>
+          <div class="drop-text">Drag & drop a file here or <span class="drop-browse">browse</span></div>
+          <div class="drop-hint">Supports: PDF, DOCX, TXT, CSV, XLSX — Max 10MB</div>
+        </div>
+        <div class="file-info" id="fileInfo" style="display:none">
+          <div class="file-info-inner">
+            <i class="ti ti-file-filled file-info-icon"></i>
+            <div class="file-info-details">
+              <div class="file-info-name" id="fileName">—</div>
+              <div class="file-info-size" id="fileSize">—</div>
+            </div>
+            <button class="btn-sm file-remove-btn" id="fileRemoveBtn"><i class="ti ti-x"></i> Remove</button>
+          </div>
+        </div>
+        <div class="input-actions">
+          <div class="char-count" id="fileTypeHint">No file selected</div>
+          <button id="analyzeFileBtn" class="btn-primary" disabled><i class="ti ti-bolt"></i> Run pipeline on file</button>
         </div>
       </div>
 

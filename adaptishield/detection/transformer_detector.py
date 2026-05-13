@@ -62,14 +62,17 @@ class TransformerDetector:
         for chunk in chunks:
             try:
                 results = self._pipeline(chunk)
+                logger.debug(f"[TransformerDetector] Raw results for chunk ({len(chunk)} chars): {results}")
                 for ent in results:
                     label = ent.get("entity_group", "")
                     pii_type = NER_LABEL_MAP.get(label)
                     if not pii_type:
+                        logger.debug(f"[TransformerDetector] Skipping unmapped label: {label}")
                         continue
 
                     score = float(ent.get("score", 0))
-                    if score < 0.70:
+                    if score < 0.50:
+                        logger.debug(f"[TransformerDetector] Skipping low-score entity: {label}={ent.get('word', '')} score={score}")
                         continue
 
                     detections.append({
@@ -85,6 +88,7 @@ class TransformerDetector:
 
             offset += len(chunk)
 
+        logger.info(f"[TransformerDetector] Detected {len(detections)} entities from {len(chunks)} chunk(s)")
         return detections
 
     def _chunk_text(self, text: str, max_chars: int = 450) -> list[str]:

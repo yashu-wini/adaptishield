@@ -1,11 +1,18 @@
 # ingestion/docx_parser.py
 
+import io
 from pathlib import Path
 from typing import Optional
 
 
 class DocxParser:
     """Extracts text and metadata from .docx files using python-docx."""
+
+    def parse_bytes(self, docx_bytes: bytes) -> dict:
+        """Parse DOCX from raw bytes (for API uploads)."""
+        from docx import Document
+        doc = Document(io.BytesIO(docx_bytes))
+        return self._extract(doc, source="upload")
 
     def parse(self, file_path: str) -> dict:
         from docx import Document
@@ -14,6 +21,10 @@ class DocxParser:
             raise FileNotFoundError(f"DOCX not found: {file_path}")
 
         doc = Document(file_path)
+        return self._extract(doc, source=file_path)
+
+    def _extract(self, doc, source: str = "unknown") -> dict:
+        """Shared extraction logic for both file-path and bytes-based parsing."""
         paragraphs = []
         full_text = []
 
@@ -42,7 +53,7 @@ class DocxParser:
             "metadata": {
                 "title": props.title or "",
                 "author": props.author or "",
-                "source": file_path,
+                "source": source,
                 "parser": "python-docx"
             }
         }

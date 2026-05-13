@@ -329,3 +329,169 @@ function esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').re
 
 // ─── Init audit ───
 addAudit('AdaptiShield dashboard loaded', 'Pipeline initialized and ready', 'ok');
+
+// ─── Input Mode Toggle ───
+let currentInputMode = 'text';
+let selectedFile = null;
+
+function switchInputMode(mode) {
+  currentInputMode = mode;
+  const textPanel = document.getElementById('textInputPanel');
+  const filePanel = document.getElementById('fileInputPanel');
+  const textBtn = document.getElementById('modeTextBtn');
+  const fileBtn = document.getElementById('modeFileBtn');
+
+  if (mode === 'text') {
+    textPanel.style.display = 'block';
+    filePanel.style.display = 'none';
+    textBtn.classList.add('active');
+    fileBtn.classList.remove('active');
+  } else {
+    textPanel.style.display = 'none';
+    filePanel.style.display = 'block';
+    textBtn.classList.remove('active');
+    fileBtn.classList.add('active');
+  }
+}
+
+// Bind mode toggle buttons
+document.getElementById('modeTextBtn').addEventListener('click', () => switchInputMode('text'));
+document.getElementById('modeFileBtn').addEventListener('click', () => switchInputMode('file'));
+
+// Bind sample buttons
+document.querySelectorAll('[data-sample]').forEach(btn => {
+  btn.addEventListener('click', () => loadSample(parseInt(btn.dataset.sample)));
+});
+
+// ─── File Upload: Drag & Drop ───
+const fileDropZone = document.getElementById('fileDropZone');
+const fileInput = document.getElementById('fileInput');
+
+// Bind drop zone click to open file browser
+fileDropZone.addEventListener('click', () => fileInput.click());
+
+// Bind file remove button
+document.getElementById('fileRemoveBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  removeFile();
+});
+
+// Prevent default drag behaviors on the whole page
+['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+  document.body.addEventListener(eventName, e => { e.preventDefault(); e.stopPropagation(); }, false);
+});
+
+// Highlight drop zone on drag over
+['dragenter', 'dragover'].forEach(eventName => {
+  fileDropZone.addEventListener(eventName, () => { fileDropZone.classList.add('drag-over'); }, false);
+});
+['dragleave', 'drop'].forEach(eventName => {
+  fileDropZone.addEventListener(eventName, () => { fileDropZone.classList.remove('drag-over'); }, false);
+});
+
+// Handle dropped files
+fileDropZone.addEventListener('drop', (e) => {
+  const files = e.dataTransfer.files;
+  if (files.length > 0) handleFileSelection(files[0]);
+}, false);
+
+// Handle file input change (browse button)
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length > 0) handleFileSelection(fileInput.files[0]);
+});
+
+function handleFileSelection(file) {
+  const allowedExts = ['.pdf', '.docx', '.txt', '.csv', '.xlsx'];
+  const ext = '.' + file.name.split('.').pop().toLowerCase();
+
+  if (!allowedExts.includes(ext)) {
+    alert('Unsupported file type: ' + ext + '\nAllowed: ' + allowedExts.join(', '));
+    return;
+  }
+
+  if (file.size > 10 * 1024 * 1024) {
+    alert('File too large. Maximum size is 10MB.');
+    return;
+  }
+
+  selectedFile = file;
+
+  // Show file info
+  document.getElementById('fileInfo').style.display = 'block';
+  document.getElementById('fileName').textContent = file.name;
+  document.getElementById('fileSize').textContent = formatFileSize(file.size) + ' — ' + ext.toUpperCase().slice(1);
+  document.getElementById('fileTypeHint').textContent = file.name + ' selected';
+
+  // Update drop zone appearance
+  fileDropZone.classList.add('has-file');
+
+  // Enable analyze button
+  document.getElementById('analyzeFileBtn').disabled = false;
+}
+
+function removeFile() {
+  selectedFile = null;
+  fileInput.value = '';
+  document.getElementById('fileInfo').style.display = 'none';
+  document.getElementById('fileTypeHint').textContent = 'No file selected';
+  fileDropZone.classList.remove('has-file');
+  document.getElementById('analyzeFileBtn').disabled = true;
+}
+
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+// ─── File Analysis ───
+document.getElementById('analyzeFileBtn').addEventListener('click', runFileAnalysis);
+
+async function runFileAnalysis() {
+  if (!selectedFile) return;
+
+  const btn = document.getElementById('analyzeFileBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="ti ti-loader" style="animation:spin 1s linear infinite"></i> Analyzing file...';
+
+  try {
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    const res = await fetch('/analyze/file', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Server error');
+    }
+
+    const data = await res.json();
+
+    // For file analysis, show the extracted text from the pipeline if available
+    // The backend processes the file content and returns anonymized_text
+    const displayText = data.original_text
+      || ('File: ' + selectedFile.name + ' (' + formatFileSize(selectedFile.size) + ')\n\n'
+        + 'Extracted ' + (data.cleaned_length || '?') + ' characters from ' + (data.document_type || 'file').toUpperCase() + ' document.\n'
+        + 'Entities detected: ' + (data.entities ? data.entities.length : 0));
+
+    handleResult(data, displayText);
+    addAudit(
+      'File uploaded: ' + selectedFile.name,
+      formatFileSize(selectedFile.size) + ' — processed via /analyze/file',
+      'ok'
+    );
+  } catch (e) {
+    console.error(e);
+    addAudit('File analysis failed: ' + e.message, 'File: ' + selectedFile.name, 'err');
+    alert('Analysis failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-bolt"></i> Run pipeline on file';
+  }
+}
+
