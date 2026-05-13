@@ -1,5 +1,3 @@
-<![CDATA[<div align="center">
-
 # 🛡️ AdaptiShield
 
 ### Context-Aware Privacy Intelligence Framework
@@ -13,8 +11,6 @@
 A modular, 6-stage pipeline that combines Regex, Transformer (DeBERTa-v3), and spaCy NER to detect PII in text and documents — then validates, risk-scores, anonymizes, and encrypts the output.
 
 ---
-
-</div>
 
 ## ✨ Features
 
@@ -41,7 +37,7 @@ User Input (Text / PDF / DOCX / CSV)
 ┌───────────────────────────────────────────────┐
 │  Stage 1: INGESTION                           │
 │  PDF / DOCX / CSV parsers → TextCleaner       │
-│  (Unicode normalization, whitespace cleanup)   │
+│  (Unicode normalization, whitespace cleanup)  │
 └─────────────────────┬─────────────────────────┘
                       ▼
 ┌───────────────────────────────────────────────┐
@@ -325,6 +321,7 @@ adaptishield/
 ## 🔐 Supported PII Types
 
 ### Indian-Specific
+
 | Type | Example | Sensitivity |
 |------|---------|-------------|
 | Aadhaar | `2345 6789 0123` | 🔴 CRITICAL |
@@ -338,6 +335,7 @@ adaptishield/
 | Pincode | `560001` | 🟢 LOW |
 
 ### Generic
+
 | Type | Example | Sensitivity |
 |------|---------|-------------|
 | Password | `Secure@123!` | 🔴 CRITICAL |
@@ -368,11 +366,6 @@ This project is open-source and available under the [MIT License](LICENSE).
 
 ---
 
-<div align="center">
-
 **Built with ❤️ for privacy compliance**
 
 *AdaptiShield — because data privacy isn't optional.*
-
-</div>
-]]>
