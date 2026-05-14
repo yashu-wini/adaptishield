@@ -26,6 +26,7 @@ from detection.regex_detector import RegexDetector
 from detection.transformer_detector import TransformerDetector
 from detection.spacy_detector import SpacyDetector
 from detection.fusion_engine import FusionEngine
+from detection.transformer_context_verifier import TransformerContextVerifier
 
 # Context
 from context.context_validator import ContextValidator
@@ -58,6 +59,7 @@ class AdaptiShieldPipeline:
         self,
         use_transformer: bool = True,
         use_spacy: bool = True,
+        use_context_verifier: bool = False,
         encrypt_output: bool = True,
         log_results: bool = True,
     ):
@@ -78,6 +80,11 @@ class AdaptiShieldPipeline:
         # Stage 3: Context
         self.context_validator = ContextValidator()
         self.confidence_engine = ConfidenceEngine()
+
+        # Stage 3.5: Transformer Context Verifier (optional deep semantic re-scoring)
+        # Uses zero-shot NLI to verify if regex-detected entities are truly PII
+        # in their full sentence context. Lazy-loads the model on first use.
+        self.context_verifier = TransformerContextVerifier() if use_context_verifier else None
 
         # Domain Intelligence (CHANGE 1 — Removed Financial Domain Classification)
 
@@ -225,6 +232,28 @@ class AdaptiShieldPipeline:
             f"  ✅ Stage 3: Context — {len(recalibrated)} entities after validation "
             f"(rejected {len(rejected)}, structured_pii={has_structured_pii})"
         )
+
+        # ── Stage 3.5: Transformer Context Verification (optional) ──
+        # Uses zero-shot NLI to re-score ambiguous entities by reading
+        # the full sentence and classifying: "Is this a [PII type]?"
+        # Only runs if use_context_verifier=True was set at init.
+        if self.context_verifier and self.context_verifier.is_available:
+            pre_verify = len(recalibrated)
+            recalibrated = self.context_verifier.verify_entities(recalibrated, text)
+            # Re-apply threshold after transformer re-scoring
+            newly_rejected = [
+                d for d in recalibrated
+                if d.get("confidence", 0) < 0.25
+            ]
+            recalibrated = [
+                d for d in recalibrated
+                if d.get("confidence", 0) >= 0.25
+            ]
+            rejected.extend(newly_rejected)
+            logger.info(
+                f"  ✅ Stage 3.5: Transformer verified — "
+                f"{len(recalibrated)} survived, {len(newly_rejected)} rejected by NLI"
+            )
 
         # ── Stage 4: Sensitivity ─────────────────────────
         risk_analysis = self.sensitivity_classifier.classify_document(recalibrated)

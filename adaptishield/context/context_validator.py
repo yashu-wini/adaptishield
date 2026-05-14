@@ -102,6 +102,25 @@ class ContextValidator:
                      "total", "score", "code", "id"],
     }
 
+    # Words that follow a number and indicate it's a count/metric, NOT PII
+    QUANTITY_INDICATORS = {
+        # Social media / engagement
+        "followers", "subscribers", "users", "views", "likes",
+        "downloads", "impressions", "clicks", "shares", "posts",
+        "comments", "reviews", "stars", "ratings",
+        # General counts
+        "items", "records", "entries", "rows", "transactions",
+        "people", "members", "customers", "students", "employees",
+        "patients", "votes", "points", "results", "matches",
+        # Units / measurements
+        "times", "attempts", "steps", "miles", "meters", "km",
+        "kg", "lbs", "dollars", "rupees", "percent", "units",
+        # Time
+        "years", "months", "days", "hours", "minutes", "seconds",
+        # Documents
+        "pages", "chapters", "lines", "words", "characters",
+    }
+
     def __init__(self):
         # Set by pipeline before validation — enables generic false-positive filtering
         self.structured_pii_found = False
@@ -156,6 +175,21 @@ class ContextValidator:
             # Only apply if label didn't already penalize
             confidence = confidence * 0.65
             validation_notes.append(f"negative_context:{','.join(neg_hits[:2])}")
+
+        # ── Step 3.5: Following-word analysis ────────────────────
+        # If the word immediately after a numeric entity is a quantity
+        # indicator ("followers", "items", "users"), the number is
+        # likely a count/metric, not PII. This catches cases like
+        # "I have reached 7000138006 followers" without needing
+        # a transformer.
+        if entity_type in self.LABEL_SENSITIVE_PII_TYPES:
+            post_text = text[end:min(len(text), end + 40)].strip().lower()
+            words_after = post_text.split()
+            if words_after:
+                first_word_after = words_after[0].rstrip('.,;:!?')
+                if first_word_after in self.QUANTITY_INDICATORS:
+                    confidence *= 0.15
+                    validation_notes.append(f"quantity_follows:{first_word_after}")
 
         # ── Step 4: Entity-specific validation ───────────────────
         confidence = self._entity_specific_validation(
