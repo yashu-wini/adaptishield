@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v=4">
 </head>
 <body>
 <div class="shell">
@@ -27,6 +27,7 @@
     <span class="nav-section">System</span>
     <div class="nav-item" data-page="audit"><i class="ti ti-notes"></i>Audit logs</div>
     <div class="sidebar-footer">
+      <button id="themeToggleBtn" class="theme-toggle-btn" style="width:100%; justify-content:center; margin-bottom: 16px;"><i class="ti ti-moon"></i> Dark Mode</button>
       <div class="status-pill"><div class="status-dot"></div>Pipeline ready</div>
     </div>
   </div>
@@ -38,10 +39,10 @@
       <div class="topbar"><div class="page-title">Overview</div><div class="topbar-right"><span class="health-badge" id="healthBadge"><i class="ti ti-heart-rate-monitor"></i> Checking...</span></div></div>
 
       <div class="metrics">
-        <div class="metric glass"><div class="metric-icon" style="background:#EAF3DE;color:#3B6D11"><i class="ti ti-file-analytics"></i></div><div><div class="metric-label">Documents processed</div><div class="metric-value" id="mDocsProcessed">0</div></div></div>
-        <div class="metric glass"><div class="metric-icon" style="background:#E6F1FB;color:#185FA5"><i class="ti ti-fingerprint"></i></div><div><div class="metric-label">PII entities found</div><div class="metric-value" id="mEntitiesFound">0</div></div></div>
-        <div class="metric glass"><div class="metric-icon" style="background:#FAEEDA;color:#854F0B"><i class="ti ti-alert-triangle"></i></div><div><div class="metric-label">Avg risk score</div><div class="metric-value" id="mAvgRisk">—</div></div></div>
-        <div class="metric glass"><div class="metric-icon" style="background:#EEEDFE;color:#534AB7"><i class="ti ti-clock"></i></div><div><div class="metric-label">Avg latency</div><div class="metric-value" id="mAvgLatency">—</div></div></div>
+        <div class="metric glass"><div class="metric-icon metric-icon-processed"><i class="ti ti-file-analytics"></i></div><div><div class="metric-label">Documents processed</div><div class="metric-value" id="mDocsProcessed">0</div></div></div>
+        <div class="metric glass"><div class="metric-icon metric-icon-entities"><i class="ti ti-fingerprint"></i></div><div><div class="metric-label">PII entities found</div><div class="metric-value" id="mEntitiesFound">0</div></div></div>
+        <div class="metric glass"><div class="metric-icon metric-icon-risk"><i class="ti ti-alert-triangle"></i></div><div><div class="metric-label">Avg risk score</div><div class="metric-value" id="mAvgRisk">—</div></div></div>
+        <div class="metric glass"><div class="metric-icon metric-icon-latency"><i class="ti ti-clock"></i></div><div><div class="metric-label">Avg latency</div><div class="metric-value" id="mAvgLatency">—</div></div></div>
       </div>
 
       <div class="two-col">
@@ -243,6 +244,6 @@
     </div>
   </div>
 </div>
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v=3"></script>
 </body>
 </html>

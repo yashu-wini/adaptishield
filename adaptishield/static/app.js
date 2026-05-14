@@ -42,11 +42,24 @@ const RISK_META = {
 // ─── Navigation ───
 document.querySelectorAll('.nav-item').forEach(item => {
   item.addEventListener('click', () => {
+    if (item.classList.contains('active')) return;
+
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     item.classList.add('active');
-    const page = item.dataset.page;
-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    document.getElementById('page-' + page).classList.add('active');
+    
+    const pageId = 'page-' + item.dataset.page;
+    const newPage = document.getElementById(pageId);
+    const oldPage = document.querySelector('.page.active');
+    
+    if (oldPage) {
+      oldPage.classList.remove('active');
+      oldPage.classList.add('slide-out');
+      setTimeout(() => {
+        oldPage.classList.remove('slide-out');
+      }, 400); // Matches macSlideOut duration
+    }
+    
+    newPage.classList.add('active');
   });
 });
 
@@ -257,7 +270,10 @@ function updateOverview() {
   const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
   const max = sorted.length ? sorted[0][1] : 1;
   const chartEl = document.getElementById('entityBreakdownChart');
-  const colors = ['#6c9cff', '#a78bfa', '#4ade80', '#fbbf24', '#f87171', '#38bdf8', '#fb923c', '#e879f9'];
+  const isDark = document.body.getAttribute('data-theme') === 'dark';
+  const colors = isDark 
+    ? ['#6c9cff', '#a78bfa', '#4ade80', '#fbbf24', '#f87171', '#38bdf8', '#fb923c', '#e879f9']
+    : ['#2563eb', '#64748b', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#0ea5e9', '#f97316'];
   chartEl.innerHTML = sorted.map(([type, count], i) =>
     `<div class="bar-row fade-in">
       <span class="bar-label">${type}</span>
@@ -495,3 +511,20 @@ async function runFileAnalysis() {
   }
 }
 
+
+// ─── Theme Toggle ───
+const themeToggleBtn = document.getElementById('themeToggleBtn');
+if (themeToggleBtn) {
+  themeToggleBtn.addEventListener('click', () => {
+    const isDark = document.body.getAttribute('data-theme') === 'dark';
+    if (isDark) {
+      document.body.removeAttribute('data-theme');
+      themeToggleBtn.innerHTML = '<i class="ti ti-moon"></i> Dark Mode';
+    } else {
+      document.body.setAttribute('data-theme', 'dark');
+      themeToggleBtn.innerHTML = '<i class="ti ti-sun"></i> Light Mode';
+    }
+    // Update chart colors if it's rendered
+    updateOverview();
+  });
+}
