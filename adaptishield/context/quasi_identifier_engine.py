@@ -18,6 +18,11 @@ Risk Model:
 
   correlation_risk is computed from known dangerous quasi-identifier
   combinations found in the document.
+
+Deduplication:
+  When a superset rule fires (e.g., AADHAAR + PAN + NAME), its subset
+  rules (e.g., AADHAAR + NAME, PAN + NAME) are excluded to prevent
+  double-counting the same underlying risk.
 """
 
 from typing import Dict, List, Set, Tuple
@@ -28,6 +33,9 @@ class QuasiIdentifierEngine:
     """
     Detects dangerous combinations of quasi-identifiers that could enable
     re-identification attacks, even after individual anonymization.
+
+    Uses superset deduplication: if a larger combination fires, its
+    smaller subsets are excluded from scoring.
     """
 
     # ── Quasi-Identifier Combination Risk Table ─────────────────
@@ -66,6 +74,10 @@ class QuasiIdentifierEngine:
          "HIGH", 35.0,
          "Email + Phone enables cross-platform identity linking"),
 
+        (frozenset(["EMAIL", "PASSWORD"]),
+         "CRITICAL", 70.0,
+         "Email + Password is a direct credential exposure"),
+
         (frozenset(["CREDIT_CARD", "NAME"]),
          "CRITICAL", 55.0,
          "Credit card + Name enables financial fraud"),
@@ -91,6 +103,10 @@ class QuasiIdentifierEngine:
          "CRITICAL", 65.0,
          "Name + DOB + PIN uniquely identifies per Rocher et al."),
 
+        (frozenset(["NAME", "AGE", "LOCATION"]),
+         "HIGH", 40.0,
+         "Name + Age + Location is a strong quasi-ID triplet"),
+
         (frozenset(["PAN", "BANK_ACCOUNT", "NAME"]),
          "CRITICAL", 75.0,
          "PAN + Account + Name is full financial identity"),
@@ -104,6 +120,10 @@ class QuasiIdentifierEngine:
         """
         Analyze detected entities for dangerous quasi-identifier combinations.
 
+        Uses superset deduplication: when a larger combination matches,
+        its smaller subsets are excluded from scoring to prevent
+        double-counting the same underlying risk.
+
         Args:
             detections: List of entity dicts with 'entity_type' key.
 
@@ -116,18 +136,46 @@ class QuasiIdentifierEngine:
         """
         entity_types_present: Set[str] = set(d["entity_type"] for d in detections)
 
-        matched_risks = []
-        total_correlation_score = 0.0
-
+        # Find all matching rules
+        raw_matches = []
         for required_set, risk_label, score, description in self.CORRELATION_RULES:
             if required_set.issubset(entity_types_present):
-                matched_risks.append({
+                raw_matches.append({
+                    "combination_set": required_set,
                     "combination": sorted(required_set),
                     "risk_level": risk_label,
                     "correlation_score": score,
                     "description": description,
                 })
-                total_correlation_score += score
+
+        # ── Superset Deduplication ───────────────────────────────
+        # If rule A's entity set is a subset of rule B's entity set,
+        # and both matched, exclude rule A (the subset). The superset
+        # rule already captures the combined risk at a higher level.
+        deduplicated = []
+        for match in raw_matches:
+            is_subset_of_another = False
+            for other in raw_matches:
+                if match is other:
+                    continue
+                if (match["combination_set"] < other["combination_set"]
+                        and match["combination_set"].issubset(other["combination_set"])):
+                    is_subset_of_another = True
+                    break
+            if not is_subset_of_another:
+                deduplicated.append(match)
+
+        # Clean up internal field before returning
+        matched_risks = []
+        total_correlation_score = 0.0
+        for match in deduplicated:
+            matched_risks.append({
+                "combination": match["combination"],
+                "risk_level": match["risk_level"],
+                "correlation_score": match["correlation_score"],
+                "description": match["description"],
+            })
+            total_correlation_score += match["correlation_score"]
 
         # Determine overall re-identification risk level
         if total_correlation_score >= 100:
@@ -186,7 +234,7 @@ class QuasiIdentifierEngine:
 
         # Specific advice
         critical_combos = [r for r in matched_risks if r["risk_level"] == "CRITICAL"]
-        for combo in critical_combos[:3]:  # Top 3 critical combos
+        for combo in critical_combos[:3]:
             entities = " + ".join(combo["combination"])
             recs.append(f"  → {entities}: {combo['description']}")
 
@@ -196,6 +244,10 @@ class QuasiIdentifierEngine:
                 "these must never appear together in shared documents."
             )
 
-
+        if {"EMAIL", "PASSWORD"}.issubset(entity_types):
+            recs.append(
+                "🚨 Credential pair (Email + Password) detected — "
+                "immediate suppression required. Potential data breach."
+            )
 
         return recs

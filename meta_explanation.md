@@ -217,11 +217,13 @@ The single source of truth for PII detection rules:
 
 #### `regex_detector.py`
 Compiles all patterns from `pii_config.py` and scans text. Each match is validated with entity-specific rules:
-- **Aadhaar**: Must be exactly 12 digits → confidence 0.90
+- **Aadhaar**: Must be exactly 12 digits, rejects all-same-digit sequences → confidence 0.90
 - **PAN**: Must match `[A-Z]{5}[0-9]{4}[A-Z]` → confidence 0.95
-- **Credit Card**: Validated with the **Luhn algorithm** → confidence 0.95
+- **Credit Card**: Validated with the **Luhn algorithm** → confidence 0.80 (lowered from 0.95; context must confirm)
 - **Phone**: Must have ≥10 digits → confidence 0.88
-- **IP Address**: Private IPs get lower confidence (0.60) vs public (0.75)
+- **IP Address**: Filters `0.0.0.0`, `255.255.255.255`, subnet masks; private IPs get 0.60 vs public 0.75
+- **Password**: Extracts the value after the keyword, strips trailing punctuation (`:;,.!?`), checks for digit/special character complexity. Plain words ("policy", "reset") get 0.55; credential-like values ("Secret@123!") get 0.95
+- **PINCODE**: 6-digit numbers are highly ambiguous → confidence 0.50 (lowered from 0.85 default; context validator gates on address keywords)
 
 #### `transformer_detector.py`
 Uses a pre-trained DeBERTa-v3 NER model for contextual PII detection. High recall — catches entities that regex misses based on semantic understanding.
@@ -234,24 +236,61 @@ The intelligence layer that merges detections from all three detectors:
 1. Sorts all detections by text position.
 2. Groups overlapping spans (using IoU ≥ 0.5 threshold).
 3. For each group, selects the best entity type (priority: regex > transformer > spaCy).
-4. **Confidence boosting**:
-   - 1 detector agrees → unchanged
-   - 2 detectors agree → confidence × 1.15
-   - 3 detectors agree → confidence × 1.25 (capped at 1.0)
+4. **Floor-Guaranteed Confidence Fusion**:
+   - Computes a reliability-weighted average of detector confidences
+   - **Key invariant**: The final confidence is NEVER lower than the highest individual detector's confidence. A second detector can only HELP, never HURT.
+   - Applies entity-type-aware boost factors:
+     - Structured PII (Aadhaar, PAN, CC): ×1.05 / ×1.10
+     - Contextual PII (NAME, ADDRESS): ×1.18 / ×1.28
+     - Default: ×1.12 / ×1.20
 
-### 3.9 `context/` — Semantic Validation
+### 3.9 `context/` — Semantic Validation & Intelligence
 
 #### `context_validator.py`
-Examines an 80-character window around each detected entity:
-- **Positive signals** (e.g., "email", "aadhaar", "password" near the entity) → confidence × 1.10
-- **Negative signals** (e.g., "version", "order", "sku" near a phone number) → confidence × 0.65
-- **Entity-specific rules**: Single-word names penalized (×0.75), bank accounts without financial context penalized (×0.40), DOB confirmed by birth-related keywords (×1.15)
-- Entities with confidence < 0.45 are filtered out entirely.
+The core false-positive filtering engine. Uses **three generic mechanisms** to validate PII detections:
+
+**1. Preceding Label Analysis (General-Purpose)**
+
+The key innovation for reducing false positives. If a detected entity value is preceded by a descriptive label (e.g., `Tracking:`, `Order ID:`, `Serial:`), the validator checks whether that label matches any known PII-confirming keyword for the entity type:
+
+| Input | Label Found | Matches Positive Context? | Result |
+|-------|-------------|---------------------------|--------|
+| `Tracking: 4532015112830366` | "tracking" | ❌ Not in CREDIT_CARD context | REJECT (0.20× penalty) |
+| `Credit Card: 4532015112830366` | "credit card" | ✅ "credit", "card" match | BOOST (1.15×) |
+| `Order ID: 2345 6789 0123` | "order id" | ❌ Not in AADHAAR context | REJECT |
+| `Aadhaar: 2345 6789 0123` | "aadhaar" | ✅ Matches | BOOST |
+| `Serial: 9876543210` | "serial" | ❌ Not in PHONE context | REJECT |
+| No label present | — | — | No effect |
+
+This works for ALL entity types without hardcoding specific label lists. The system only needs to maintain positive context keywords (which already exist for each entity type).
+
+**2. Entity-Specific Validation**
+
+| Entity Type | Validation | Effect |
+|-------------|------------|--------|
+| PAN | Requires PII-confirming keywords (`pan`, `tax`, `itr`) nearby | 0.25× without context |
+| PHONE | Checks for decimal/version prefix (`3.9876543210`) | 0.15× if version pattern |
+| PASSWORD | Strips trailing punctuation, checks value complexity | 0.25× for plain words |
+| PINCODE | Requires address/location keywords nearby | 0.30× without context |
+| BANK_ACCOUNT | Requires financial keywords nearby | 0.40× without context |
+| NAME | Single-word names penalized; ALL-CAPS abbreviations penalized | 0.75× / 0.50× |
+
+**3. Generic Co-occurrence Checks**
+
+- **Structured PII co-occurrence**: Contextual PII (names, dates) only validated when structured PII (phone, email, Aadhaar) exists in the same document
+- **Cross-detector agreement**: Single-detector contextual PII without positive context gets 0.70× penalty; multi-detector agreement gets 1.05× boost
+- **Positive/negative context signals**: ±120 character window analysis for confirming and denying keywords
 
 #### `confidence_engine.py`
 Final recalibration based on document-level signals:
 - **Co-occurrence boosts**: If NAME + AADHAAR appear together, both get +0.10 boost. EMAIL + PASSWORD together get +0.15.
 - **Frequency boost**: If the same entity type appears >3 times, confidence × 1.05.
+
+#### `domain_classifier.py`
+Keyword-density-based classification identifying 6 financial sub-domains (Banking, KYC, Fintech, Transaction, Compliance, Fraud). Applies domain-specific risk multipliers.
+
+#### `quasi_identifier_engine.py`
+Detects dangerous combinations of quasi-identifiers that could enable re-identification attacks. Implements **superset deduplication**: when a larger combination rule fires (e.g., AADHAAR + PAN + NAME = 80 pts), its subset rules (AADHAAR + NAME = 60 pts, PAN + NAME = 45 pts) are excluded to prevent double-counting.
 
 ### 3.10 `sensitivity/sensitivity_classifier.py` — Risk Scoring
 
@@ -393,19 +432,21 @@ User Input (Text / PDF / DOCX / CSV)
 | `style.css` | ~8KB | Dark glassmorphism theme with Inter font, gradient buttons, risk-color-coded banners, confidence bars, fade-in animations |
 | `app.js` | ~8KB | Client-side state management, API calls, dynamic rendering of all dashboard components |
 
-### 5.3 What Was NOT Changed
+### 5.3 What Was NOT Changed (Dashboard Phase)
 
-All backend pipeline logic remains **100% identical**:
-- `pipeline.py` — No modifications
-- `detection/` — All detectors untouched
-- `context/` — Validators untouched
-- `sensitivity/` — Classifier untouched
-- `anonymization/` — Masking engines untouched
-- `security/` — AES encryptor untouched
-- `database/` — Logger untouched
-- `configs/` — PII config untouched
-- `auth.py` — JWT logic untouched (still used by `/decrypt`)
-- `dashboard/app.py` — Streamlit dashboard untouched (still usable independently)
+During the dashboard creation phase, all backend pipeline logic remained identical.
+
+### 5.4 Subsequent Pipeline Improvements (Edge-Case Hardening)
+
+After the dashboard phase, the following backend improvements were made to address false positive/negative edge cases:
+
+| File | Change |
+|------|--------|
+| `context/context_validator.py` | Added general-purpose **Preceding Label Analysis** (rejects entities preceded by non-confirming labels like "Tracking:", "Order ID:"); added PAN context validation, PHONE version-prefix detection, PASSWORD complexity check, PINCODE address-context gating; expanded positive/negative context keyword lists |
+| `detection/regex_detector.py` | Credit card confidence lowered to 0.80 (Luhn alone insufficient); PASSWORD strips trailing punctuation before complexity check; IP filters 0.0.0.0/subnets; PINCODE default confidence lowered to 0.50; Aadhaar rejects all-same-digit sequences |
+| `detection/fusion_engine.py` | Added floor-guaranteed confidence fusion (second detector can only help, never hurt); restored entity-type-aware boost factors with detector reliability weights |
+| `context/quasi_identifier_engine.py` | Added superset deduplication (prevents double-counting when subset and superset rules both fire) |
+| `configs/pii_config.py` | Updated BANK_ACCOUNT regex to handle natural language ("account number is 12345..."); restored PASSWORD, IP_ADDRESS, URL, USERNAME patterns |
 
 ---
 
@@ -591,6 +632,86 @@ final_confidence = min(1.0, weighted_avg × boost_factor)
 ```
 
 **Validation:** Boost factors are derived from the harmonic mean of detector precision rates across entity categories, ensuring the boost reflects actual cross-validation gain rather than arbitrary scaling.
+
+**Floor Guarantee (NEW):** Multi-detector fusion now guarantees that the final confidence is NEVER lower than the highest individual detector's confidence:
+
+```python
+max_individual = max(d["confidence"] for d in group)
+if n_sources > 1:
+    weighted_avg = self._compute_weighted_confidence(group)
+    base_confidence = max(weighted_avg, max_individual)  # Floor guarantee
+else:
+    base_confidence = max_individual
+final = min(1.0, base_confidence * boost_factor)
+```
+
+This prevents the dilution bug where a low-confidence transformer detection (0.30) would drag down a high-confidence regex detection (0.95) via weighted averaging.
+
+---
+
+### 7.5 CHANGE 5 — Edge-Case Hardening (Context Validation Overhaul)
+
+**File Modified:** `context/context_validator.py`
+**File Modified:** `detection/regex_detector.py`
+**File Modified:** `configs/pii_config.py`
+
+**Goal:** Systematically eliminate false positives and false negatives through flow-based improvements, without hardcoding individual edge cases.
+
+#### 1. Preceding Label Analysis (General-Purpose)
+
+A new validation mechanism that checks whether a detected PII value is preceded by a descriptive label (e.g., `Tracking:`, `Order ID:`, `Serial:`). If the label does NOT match any known PII-confirming keyword for the entity type, the detection receives a 0.20× penalty.
+
+This single mechanism handles ALL label-based false positives:
+
+| Input | Label | In Positive Context? | Outcome |
+|-------|-------|---------------------|----------|
+| `Tracking: 4532015112830366` | "tracking" | ❌ Not CREDIT_CARD | **Rejected** |
+| `Credit Card: 4532015112830366` | "credit card" | ✅ "credit", "card" | **Accepted** |
+| `Order ID: 2345 6789 0123` | "order id" | ❌ Not AADHAAR | **Rejected** |
+| `Aadhaar: 2345 6789 0123` | "aadhaar" | ✅ Matches | **Accepted** |
+| `Serial: 9876543210` | "serial" | ❌ Not PHONE | **Rejected** |
+| `Phone: 9876543210` | "phone" | ✅ Matches | **Accepted** |
+
+**Design principle:** The system doesn't maintain a list of "bad labels". Instead, any label that ISN'T a known PII-confirming keyword is treated as a competing interpretation. Only the entity's existing positive context keywords are needed.
+
+#### 2. Smart Regex Validation
+
+| Entity | Old Behavior | New Behavior |
+|--------|--------------|-------------|
+| CREDIT_CARD | 0.95 confidence | 0.80 (Luhn alone isn't proof; context must confirm) |
+| PASSWORD | Any `\S+` after "password:" = 0.98 | Strips trailing punctuation `:;,.!?`; plain words = 0.55, complex values = 0.95 |
+| IP_ADDRESS | Accepted `0.0.0.0`, `255.255.255.255` | Rejects null/broadcast/subnet addresses |
+| PINCODE | 0.85 default confidence | 0.50 (6-digit numbers are highly ambiguous; requires address context) |
+| AADHAAR | Accepted `111111111111` | Rejects all-same-digit sequences |
+
+#### 3. Entity-Specific Context Validation
+
+| Entity | Check | Penalty |
+|--------|-------|---------|
+| PAN | Requires `pan`, `tax`, `itr`, `income tax` in ±120 char window | 0.25× without context |
+| PHONE | Checks if preceded by `digit.` (version pattern like `3.9876543210`) | 0.15× if version |
+| PASSWORD | Checks if captured value has digits/special chars after stripping punctuation | 0.25× for plain words |
+| PINCODE | Requires address/location keywords (`pin`, `pincode`, `address`, `city`, etc.) | 0.30× without context |
+
+#### 4. Bank Account Natural Language Regex
+
+```diff
+- (?i)(?:account|a/c|acct)[\s.:=#-]*([0-9]{9,18})\b
++ (?i)(?:account|a/c|acct)\s*(?:no\.?|number|num|#)?\s*(?:is\s+|[:=#-]\s*)?([0-9]{9,18})\b
+```
+
+Now handles: "account number is 12345678901234", "account no: 12345", "account #12345", "acct number 12345"
+
+#### 5. Quasi-ID Superset Deduplication
+
+When `AADHAAR + PAN + NAME` fires (80 pts), its subsets `AADHAAR + NAME` (60 pts) and `PAN + NAME` (45 pts) are now excluded. Previously all three scored independently = 185 pts of double-counted risk.
+
+#### Test Results
+
+```
+Unit Tests:      21/21 ✅
+Edge Case Tests: 22/22 ✅
+```
 
 ---
 

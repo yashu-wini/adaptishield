@@ -66,6 +66,9 @@ class RegexDetector:
             digits = re.sub(r"\s", "", value)
             if len(digits) != 12:
                 return None
+            # Reject if all digits are the same (e.g., 111111111111)
+            if len(set(digits)) <= 2:
+                return None
             return 0.90
 
         if entity_type == "PAN":
@@ -86,18 +89,52 @@ class RegexDetector:
             digits = re.sub(r"\D", "", value)
             if not self._luhn_check(digits):
                 return None
-            return 0.95
+            # Credit card passes Luhn, but Luhn is not unique to credit cards.
+            # Use moderate confidence — context validator will boost or penalize.
+            return 0.80
 
         if entity_type == "PASSWORD":
-            return 0.98
+            # Extract the value part after the keyword (password: XXXXX)
+            pwd_match = re.match(r'(?i)(?:password|passwd|pwd)[\s:=]+(\S+)', value)
+            if pwd_match:
+                pwd_value = pwd_match.group(1)
+                # Strip trailing sentence punctuation — "policy:" → "policy"
+                # These are part of the sentence, not the password itself.
+                pwd_value = pwd_value.rstrip(':;,.!?')
+                if not pwd_value:
+                    return None
+                has_digit = bool(re.search(r'\d', pwd_value))
+                has_special = bool(re.search(r'[^a-zA-Z0-9]', pwd_value))
+                # High confidence only if the value looks like a real credential
+                if has_digit or has_special:
+                    return 0.95
+                # Plain word after "password:" — lower confidence, let context decide
+                return 0.55
+            return 0.55
 
         if entity_type == "IP_ADDRESS":
             parts = value.split(".")
-            if not all(0 <= int(p) <= 255 for p in parts):
+            try:
+                int_parts = [int(p) for p in parts]
+            except ValueError:
+                return None
+            if not all(0 <= p <= 255 for p in int_parts):
+                return None
+            # Filter non-PII addresses: 0.0.0.0, 255.255.255.255, broadcast
+            if value in ("0.0.0.0", "255.255.255.255"):
+                return None
+            # Subnet masks (all octets are 255 or 0, e.g. 255.255.255.0)
+            if all(p in (0, 255) for p in int_parts):
                 return None
             if value.startswith(("192.168.", "10.", "127.", "172.")):
                 return 0.60  # Private IP, lower sensitivity
             return 0.75
+
+        if entity_type == "PINCODE":
+            # Pincodes are extremely ambiguous (any 6-digit number).
+            # Assign lower confidence — context validator will boost if
+            # address-related keywords are nearby.
+            return 0.50
 
         return 0.85  # Default
 

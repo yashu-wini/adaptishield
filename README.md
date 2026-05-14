@@ -14,14 +14,17 @@ A modular, 6-stage pipeline that combines Regex, Transformer (DeBERTa-v3), and s
 
 ## ✨ Features
 
-- **Hybrid Detection** — Regex (high precision) + DeBERTa-v3 Transformer (high recall) + spaCy NER, merged via a Fusion Engine with confidence boosting
+- **Hybrid Detection** — Regex (high precision) + DeBERTa-v3 Transformer (high recall) + spaCy NER, merged via a Fusion Engine with floor-guaranteed confidence boosting
 - **Indian PII Support** — Aadhaar, PAN, Voter ID, Driving License, Passport, IFSC, UPI ID, GST Number, Pincode
 - **Generic PII Support** — Email, Phone, Credit Card (Luhn-validated), Bank Account, IP Address, Password, URL, Date, Name
-- **Context Validation** — Semantic window analysis (±80 chars) with positive/negative signal detection and false-positive filtering
-- **Risk Scoring** — Per-entity sensitivity classification (LOW → CRITICAL) and document-level risk scoring with compliance recommendations
-- **Adaptive Anonymization** — Policy-driven: MASK (preserves structure), TOKENIZE (reversible hash), or REDACT (irreversible) based on sensitivity
+- **Preceding Label Analysis** — General-purpose false positive filter: if a PII match follows a non-confirming label (e.g., `Tracking:`, `Order ID:`, `Serial:`), it's rejected. No hardcoded label lists — uses the entity's own positive context keywords to decide
+- **Smart Regex Validation** — PASSWORD complexity checks (rejects "password policy:"), IP address filtering (0.0.0.0, subnet masks), PAN context requirement, PINCODE address-context gating, phone version-prefix detection ("Python 3.9876543210")
+- **Context Validation** — ±120 char semantic window analysis with positive/negative signals, structured PII co-occurrence checks, and cross-detector agreement scoring
+- **Quasi-Identifier Correlation** — Detects dangerous entity combinations (e.g., Aadhaar + PAN + Name) with superset deduplication to prevent double-counting
+- **Risk Scoring** — Evidence-backed per-entity sensitivity (ITRC, BreachRadar, Dark Web studies) and document-level risk scoring with compliance recommendations
+- **Adaptive Anonymization** — 6 strategies: MASK, TOKENIZE, REDACT, PSEUDONYMIZE, GENERALIZE, K-ANONYMIZE — policy-driven by sensitivity level
 - **AES-256-GCM Encryption** — Authenticated encryption of anonymized output with fresh nonces
-- **Multi-format Ingestion** — PDF, DOCX, CSV/XLSX, and plain text
+- **Multi-format Ingestion** — PDF, DOCX, CSV/XLSX, and plain text with OCR artifact correction
 - **Web Dashboard** — Glassmorphism dark-theme SPA with live pipeline visualization, entity explorer, and audit logs
 - **REST API** — FastAPI with Swagger/ReDoc documentation, JWT auth for sensitive endpoints
 - **Audit Trail** — Every analysis is logged with document ID, risk level, entity count, and timestamp
@@ -34,44 +37,60 @@ A modular, 6-stage pipeline that combines Regex, Transformer (DeBERTa-v3), and s
 User Input (Text / PDF / DOCX / CSV)
         │
         ▼
-┌───────────────────────────────────────────────┐
-│  Stage 1: INGESTION                           │
-│  PDF / DOCX / CSV parsers → TextCleaner       │
-│  (Unicode normalization, whitespace cleanup)  │
-└─────────────────────┬─────────────────────────┘
+┌───────────────────────────────────────────────────┐
+│  Stage 1: INGESTION                               │
+│  PDF / DOCX / CSV parsers → TextCleaner           │
+│  (Unicode norm, OCR artifact fix, whitespace)     │
+└─────────────────────┬─────────────────────────────┘
                       ▼
-┌───────────────────────────────────────────────┐
-│  Stage 2: HYBRID DETECTION                    │
-│  Regex ──┐                                    │
-│  DeBERTa ├──→ Fusion Engine (IoU dedup +      │
-│  spaCy ──┘    confidence boosting)            │
-└─────────────────────┬─────────────────────────┘
+┌───────────────────────────────────────────────────┐
+│  Stage 2: HYBRID DETECTION                        │
+│  Regex ──┐                                        │
+│  DeBERTa ├──→ Fusion Engine (IoU dedup +          │
+│  spaCy ──┘    floor-guaranteed confidence boost)  │
+│  + Smart validation: Luhn, IP filter, PASSWORD    │
+│    complexity, PAN/PINCODE confidence gating      │
+└─────────────────────┬─────────────────────────────┘
                       ▼
-┌───────────────────────────────────────────────┐
-│  Stage 3: CONTEXT VALIDATION                  │
-│  ContextValidator (±80 char window)           │
-│  → ConfidenceEngine (co-occurrence boosts)    │
-│  → Filter entities < 0.45 confidence          │
-└─────────────────────┬─────────────────────────┘
+┌───────────────────────────────────────────────────┐
+│  Stage 3: CONTEXT VALIDATION                      │
+│  ┌─ Preceding Label Analysis ──────────────────┐  │
+│  │  "Tracking: 4532..." → label ≠ CREDIT_CARD  │  │
+│  │  positive context → REJECT (0.20× penalty)  │  │
+│  └─────────────────────────────────────────────┘  │
+│  + Positive/negative context signals (±120 chars) │
+│  + Entity-specific: PAN context, phone version    │
+│    prefix, password complexity, pincode address    │
+│  + Structured PII co-occurrence filtering         │
+│  + Cross-detector agreement scoring               │
+│  → ConfidenceEngine (co-occurrence boosts)        │
+└─────────────────────┬─────────────────────────────┘
                       ▼
-┌───────────────────────────────────────────────┐
-│  Stage 4: SENSITIVITY & RISK SCORING          │
-│  effective_score = weight × confidence        │
-│  risk_score = Σ(effective_scores)             │
-│  → LOW / MEDIUM / HIGH / CRITICAL             │
-└─────────────────────┬─────────────────────────┘
+┌───────────────────────────────────────────────────┐
+│  Stage 4: SENSITIVITY & RISK SCORING              │
+│  Evidence-backed risk profiles (ITRC/BreachRadar) │
+│  effective_score = weight × confidence            │
+│  risk_score = Σ(effective_scores)                 │
+│  → LOW / MEDIUM / HIGH / CRITICAL                 │
+├───────────────────────────────────────────────────┤
+│  Stage 4.5: QUASI-ID CORRELATION                  │
+│  Detects dangerous entity combos (Rocher et al.)  │
+│  Superset deduplication (no double-counting)      │
+│  final_risk = base_risk + correlation_risk        │
+└─────────────────────┬─────────────────────────────┘
                       ▼
-┌───────────────────────────────────────────────┐
-│  Stage 5: ANONYMIZATION                       │
-│  LOW → MASK    |  MEDIUM → TOKENIZE           │
-│  HIGH → REDACT |  CRITICAL → REDACT           │
-└─────────────────────┬─────────────────────────┘
+┌───────────────────────────────────────────────────┐
+│  Stage 5: ANONYMIZATION                           │
+│  LOW → MASK  | MEDIUM → TOKENIZE                  │
+│  HIGH/CRITICAL → REDACT                           │
+│  + PSEUDONYMIZE / GENERALIZE / K_ANONYMIZE        │
+└─────────────────────┬─────────────────────────────┘
                       ▼
-┌───────────────────────────────────────────────┐
-│  Stage 6: AES-256-GCM ENCRYPTION              │
-│  Fresh 96-bit nonce per encryption            │
-│  → base64 ciphertext + nonce                  │
-└─────────────────────┬─────────────────────────┘
+┌───────────────────────────────────────────────────┐
+│  Stage 6: AES-256-GCM ENCRYPTION                  │
+│  Fresh 96-bit nonce per encryption                │
+│  → base64 ciphertext + nonce                      │
+└─────────────────────┬─────────────────────────────┘
                       ▼
               Audit Logger → Database
               API Response → Dashboard
@@ -240,14 +259,14 @@ curl -X POST http://127.0.0.1:8000/analyze/file \
 ```bash
 cd adaptishield
 
-# Using pytest
-python -m pytest tests/test_pipeline.py -v
-
-# Using unittest directly
+# Unit tests (21 tests)
 python -m unittest tests.test_pipeline -v
+
+# Edge case tests (22 tests)
+python test_edge_cases.py
 ```
 
-The test suite covers:
+**Unit test suite** (21 tests):
 - Regex detection accuracy (Email, Aadhaar, PAN, Phone, Credit Card with Luhn validation)
 - False positive rejection on clean text
 - Sensitivity classification thresholds
@@ -255,6 +274,23 @@ The test suite covers:
 - AES-256-GCM encrypt/decrypt roundtrips
 - Fusion engine confidence boosting
 - Full end-to-end pipeline integration
+
+**Edge case test suite** (22 tests) — verifies false positive rejection:
+
+| Test | Input | Expected |
+|------|-------|----------|
+| Tracking number | `Tracking: 4532015112830366` (valid Luhn) | ❌ NOT credit card |
+| Order ID | `Order ID: 2345 6789 0123` | ❌ NOT Aadhaar |
+| Serial number | `Serial: 9876543210` | ❌ NOT phone |
+| Version number | `Python 3.9876543210` | ❌ NOT phone |
+| Policy number | `Policy Number: 4532015112830366` | ❌ NOT credit card |
+| Password policy | `password policy: minimum 8 chars` | ❌ NOT password |
+| Algorithm name | `The ABCDE1234F algorithm` | ❌ NOT PAN |
+| Null IP | `0.0.0.0` | ❌ NOT IP address |
+| Real credit card | `Credit Card: 4532015112830366` | ✅ Detected |
+| Real Aadhaar | `Aadhaar: 2345 6789 0123` | ✅ Detected |
+| Real password | `password: Secret@123!` | ✅ Detected |
+| Natural language | `My account number is 12345678901234` | ✅ Detected |
 
 ---
 
@@ -277,14 +313,16 @@ adaptishield/
 │   └── app.js                  # Client-side logic & API calls
 │
 ├── detection/                  # Hybrid PII detection
-│   ├── regex_detector.py       # Pattern-based (high precision)
+│   ├── regex_detector.py       # Pattern-based + smart validation
 │   ├── transformer_detector.py # DeBERTa-v3 NER (high recall)
 │   ├── spacy_detector.py       # spaCy NER (named entities)
-│   └── fusion_engine.py        # IoU dedup + confidence boosting
+│   └── fusion_engine.py        # IoU dedup + floor-guaranteed boosting
 │
-├── context/                    # Semantic validation
-│   ├── context_validator.py    # ±80 char window analysis
-│   └── confidence_engine.py    # Co-occurrence boosts
+├── context/                    # Semantic validation & intelligence
+│   ├── context_validator.py    # Preceding label analysis + ±120 char window
+│   ├── confidence_engine.py    # Co-occurrence boosts
+│   ├── domain_classifier.py    # Financial sub-domain classification
+│   └── quasi_identifier_engine.py  # Re-identification risk correlation
 │
 ├── sensitivity/                # Risk scoring
 │   └── sensitivity_classifier.py
