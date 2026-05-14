@@ -3,22 +3,31 @@ Dockerfile
 docker-compose.yml
 .dockerignore
 
-# Python
-__pycache__/
+# Python artifacts
+**/__pycache__/
 *.py[cod]
 *$py.class
+*.pyo
+*.pyd
 *.egg-info/
 dist/
 build/
 .eggs/
+pip-wheel-metadata/
+htmlcov/
+.coverage
+.coverage.*
+.cache/
 
-# Virtual environments
-venv/
-.env/
-env/
+# Virtual environments and secrets
+**/.venv/
+**/venv/
+**/env/
+**/.env
+**/.env.*
 
-# pytest
-.pytest_cache/
+# Testing
+**/.pytest_cache/
 
 # IDE
 .vscode/
@@ -28,7 +37,7 @@ env/
 Thumbs.db
 .DS_Store
 
-# Logs (optional - remove this line if you want logs tracked)
+# Logs
 logs/
 
 # Temp files

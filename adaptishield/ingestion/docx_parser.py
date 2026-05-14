@@ -31,7 +31,7 @@ class DocxParser:
         for para in doc.paragraphs:
             if para.text.strip():
                 paragraphs.append({
-                    "style": para.style.name,
+                    "style": para.style.name if para.style else "Normal",
                     "text": para.text
                 })
                 full_text.append(para.text)
