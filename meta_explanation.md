@@ -345,70 +345,97 @@ End-to-end test suite covering:
 
 ---
 
-## 4. Overall Data Flow
+## 4. Overall Data Flow — Traced Walkthrough
+
+To understand how the pipeline works, let's trace this input through every stage:
 
 ```
-User Input (Text / PDF / DOCX / CSV)
-        │
-        ▼
-┌─────────────────────────────────────────────────┐
-│  Stage 1: INGESTION                             │
-│  pdf_parser / docx_parser / csv_parser          │
-│  → text_cleaner (Unicode norm, whitespace)      │
-└─────────────────────┬───────────────────────────┘
-                      │  cleaned UTF-8 text
-                      ▼
-┌─────────────────────────────────────────────────┐
-│  Stage 2: DETECTION                             │
-│  ┌──────────┐ ┌───────────────┐ ┌────────────┐ │
-│  │  Regex   │ │  Transformer  │ │   spaCy    │ │
-│  │ Detector │ │  (DeBERTa-v3) │ │  NER       │ │
-│  └────┬─────┘ └──────┬────────┘ └─────┬──────┘ │
-│       └──────────────┼────────────────┘         │
-│                      ▼                          │
-│            Fusion Engine                        │
-│   (IoU dedup + confidence boosting)             │
-└─────────────────────┬───────────────────────────┘
-                      │  fused entity list
-                      ▼
-┌─────────────────────────────────────────────────┐
-│  Stage 3: CONTEXT VALIDATION                    │
-│  ContextValidator (±80 char window analysis)    │
-│  → filter entities < 0.45 confidence            │
-│  ConfidenceEngine (co-occurrence boosts)        │
-└─────────────────────┬───────────────────────────┘
-                      │  validated entities
-                      ▼
-┌─────────────────────────────────────────────────┐
-│  Stage 4: SENSITIVITY & RISK                    │
-│  SensitivityClassifier                          │
-│  Per-entity: effective_score = weight × conf    │
-│  Document:   risk_score = Σ effective_scores    │
-│  → LOW / MEDIUM / HIGH / CRITICAL               │
-└─────────────────────┬───────────────────────────┘
-                      │  classified entities + risk level
-                      ▼
-┌─────────────────────────────────────────────────┐
-│  Stage 5: ANONYMIZATION                         │
-│  AdaptiveAnonymizer                             │
-│  LOW→MASK  MEDIUM→TOKENIZE  HIGH/CRIT→REDACT   │
-│  apply_to_text() (reverse-order replacement)    │
-└─────────────────────┬───────────────────────────┘
-                      │  anonymized text + entity map
-                      ▼
-┌─────────────────────────────────────────────────┐
-│  Stage 6: ENCRYPTION                            │
-│  AESEncryptor (AES-256-GCM)                     │
-│  Fresh 96-bit nonce per encryption              │
-│  → base64 ciphertext + nonce                    │
-└─────────────────────┬───────────────────────────┘
-                      │
-                      ▼
-              Audit Logger → Database
-              API Response → Dashboard
+"Tracking: 4532015112830366 | Aadhaar: 2345 6789 0123 | PAN: ABCDE1234F | Email: priya@gmail.com"
 ```
 
----
+### Stage 1: Text Cleaning (`text_cleaner.py`)
+Unicode NFKC normalization → control character removal → whitespace normalization.
+Output: same text (already clean), guaranteed UTF-8.
+
+### Stage 2: Hybrid Detection (`regex_detector.py` → `fusion_engine.py`)
+
+**2a.** Regex scans all patterns from `pii_config.py`. Each match is validated:
+
+| Match | Entity Type | `_validate()` Logic | Confidence |
+|-------|-------------|---------------------|------------|
+| `4532015112830366` | CREDIT_CARD | Luhn ✅ | 0.80 |
+| `2345 6789 0123` | AADHAAR | 12 digits, not all-same ✅ | 0.90 |
+| `ABCDE1234F` | PAN | Format match ✅ | 0.95 |
+| `priya@gmail.com` | EMAIL | Valid format ✅ | 0.92 |
+
+**2b.** Fusion Engine groups overlapping spans (IoU ≥ 0.5), applies floor-guaranteed weighted confidence. If both regex (0.95) and transformer (0.30) detect the same entity, fused confidence ≥ 0.95 (never diluted).
+
+### Stage 3: Context Validation — 7 Steps Per Entity (`context_validator.py`)
+
+Pipeline first sets document-level flags:
+```python
+has_structured_pii = True  # EMAIL, AADHAAR exist → contextual PII is trusted
+```
+
+Then **each entity passes through 7 sequential checks**:
+
+| Step | What it does | Modifies confidence by |
+|------|-------------|----------------------|
+| ① **Preceding Label Analysis** | Checks if entity follows `LABEL:` pattern. If label ∉ positive context → "competing" → penalty | ×0.20 (competing) or ×1.15 (confirming) |
+| ② **Positive Context Signals** | Scans ±120 chars for PII keywords | ×1.10 boost |
+| ③ **Negative Context Signals** | Scans for anti-PII keywords ("version", "order") | ×0.65 penalty |
+| ④ **Entity-Specific Validation** | PAN: needs tax context. PHONE: checks version prefix. PASSWORD: checks complexity. PINCODE: needs address context | varies (×0.15 to ×0.30) |
+| ⑤ **Structured PII Co-occurrence** | Contextual PII (NAME, DATE) rejected if no structured PII in document | ×0.20 penalty |
+| ⑥ **Cross-Detector Agreement** | Single-detector contextual PII without positive context | ×0.70 penalty |
+| ⑦ **Threshold Gate** | Structured PII ≥ 0.25, other ≥ 0.30. Below = REJECTED | pass/fail |
+
+**Traced for CREDIT_CARD (`4532015112830366`, conf=0.80):**
+1. Prefix = `"Tracking: "` → label "tracking" ∉ CREDIT_CARD positives → **competing** → 0.80 × 0.20 = **0.16**
+2. Skip (already penalized)
+3. Skip (already penalized)
+4. No CC-specific check
+5. N/A (structured PII type)
+6. N/A (structured PII type)
+7. **0.16 < 0.25 → REJECTED** ❌
+
+**Traced for AADHAAR (`2345 6789 0123`, conf=0.90):**
+1. Prefix = `"Aadhaar: "` → "aadhaar" ∈ AADHAAR positives → **confirming** → 0.90 × 1.15 = **1.0** (capped)
+2–6. No further penalties
+7. **1.0 ≥ 0.25 → ACCEPTED** ✅
+
+**After validation:** 3 entities accepted, 1 rejected. `ConfidenceEngine` then applies co-occurrence boosts (e.g., AADHAAR + PAN together → +0.10).
+
+### Stage 4: Sensitivity & Risk Scoring (`sensitivity_classifier.py`)
+
+Each entity gets a risk weight from evidence-backed profiles:
+```
+weight = 0.3×(exposure_freq) + 0.3×(fraud_impact) + 0.2×(regulatory) + 0.2×(abuse_likelihood)
+effective_score = weight × 100 × confidence → determines CRITICAL/HIGH/MEDIUM/LOW
+```
+
+### Stage 4.5: Quasi-Identifier Correlation (`quasi_identifier_engine.py`)
+
+Checks entity **combinations** — AADHAAR + PAN = 60 pts. Uses superset deduplication to prevent double-counting. Adds `correlation_risk` to `base_risk_score`.
+
+### Stage 5: Anonymization (`masking.py`)
+
+Strategy by sensitivity: CRITICAL → REDACT, HIGH → REDACT, MEDIUM → TOKENIZE, LOW → MASK. Text replacements processed in **reverse position order** to preserve offsets.
+
+```
+Output: "Tracking: 4532015112830366 | Aadhaar: [AADHAAR_REDACTED] | PAN: [PAN_REDACTED] | Email: [EMAIL_REDACTED]"
+```
+Note: `4532015112830366` is **preserved** — it was rejected in Stage 3.
+
+### Stage 6: Encryption (`aes_encryptor.py`)
+
+AES-256-GCM with fresh 96-bit nonce → base64 ciphertext + nonce.
+
+### Why New Edge Cases Are Handled Without Code Changes
+
+The preceding label analysis (Step ①) uses a **negative inference** approach:
+- The system doesn't maintain a list of "bad" labels
+- Instead, any label NOT in the entity's positive context list = competing interpretation
+- So `"Receipt: 4532..."`, `"Barcode: 9876..."`, or `"Policy: ABCDE1234F"` are automatically handled without modifying code
 
 ## 5. Changes Made (Dashboard Overhaul)
 
