@@ -66,10 +66,6 @@ class QuasiIdentifierEngine:
          "HIGH", 35.0,
          "Email + Phone enables cross-platform identity linking"),
 
-        (frozenset(["EMAIL", "PASSWORD"]),
-         "CRITICAL", 70.0,
-         "Email + Password is a direct credential exposure"),
-
         (frozenset(["CREDIT_CARD", "NAME"]),
          "CRITICAL", 55.0,
          "Credit card + Name enables financial fraud"),
@@ -94,10 +90,6 @@ class QuasiIdentifierEngine:
         (frozenset(["NAME", "DATE_OF_BIRTH", "PINCODE"]),
          "CRITICAL", 65.0,
          "Name + DOB + PIN uniquely identifies per Rocher et al."),
-
-        (frozenset(["NAME", "AGE", "LOCATION"]),
-         "HIGH", 40.0,
-         "Name + Age + Location is a strong quasi-ID triplet"),
 
         (frozenset(["PAN", "BANK_ACCOUNT", "NAME"]),
          "CRITICAL", 75.0,
@@ -204,10 +196,6 @@ class QuasiIdentifierEngine:
                 "these must never appear together in shared documents."
             )
 
-        if {"EMAIL", "PASSWORD"}.issubset(entity_types):
-            recs.append(
-                "🚨 Credential pair (Email + Password) detected — "
-                "immediate suppression required. Potential data breach."
-            )
+
 
         return recs

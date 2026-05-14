@@ -9,10 +9,6 @@ logger = logging.getLogger(__name__)
 NER_LABEL_MAP = {
     "PER":    "NAME",
     "PERSON": "NAME",
-    "ORG":    "ORGANIZATION",
-    "LOC":    "LOCATION",
-    "GPE":    "LOCATION",
-    "FAC":    "LOCATION",
     "DATE":   "DATE_OF_BIRTH",
     "TIME":   "DATE_OF_BIRTH",
     "MONEY":  "CREDIT_CARD",

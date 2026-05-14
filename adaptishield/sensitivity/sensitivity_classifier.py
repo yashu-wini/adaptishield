@@ -9,7 +9,7 @@ Risk Formula:
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from configs.pii_config import PII_SENSITIVITY_WEIGHTS, RISK_LEVELS, ANONYMIZATION_POLICY
+from configs.pii_config import ENTITY_RISK_PROFILE, RISK_LEVELS, ANONYMIZATION_POLICY
 
 
 class SensitivityClassifier:
@@ -21,7 +21,23 @@ class SensitivityClassifier:
     def classify_entity(self, detection: dict) -> dict:
         """Add sensitivity_weight and sensitivity_level to a detection."""
         entity_type = detection["entity_type"]
-        weight = PII_SENSITIVITY_WEIGHTS.get(entity_type, 10)
+        
+        # Fetch evidence-backed profile or fallback to a moderate default
+        profile = ENTITY_RISK_PROFILE.get(entity_type, {
+            "exposure_frequency": 0.5, 
+            "fraud_impact": 0.5, 
+            "regulatory_severity": 0.5, 
+            "abuse_likelihood": 0.5
+        })
+        
+        # Calculate dynamic evidence-backed risk weight
+        # Formula: 0.3(EF) + 0.3(FI) + 0.2(RS) + 0.2(AL)
+        weight_raw = (0.3 * profile["exposure_frequency"] + 
+                      0.3 * profile["fraud_impact"] + 
+                      0.2 * profile["regulatory_severity"] + 
+                      0.2 * profile["abuse_likelihood"])
+        
+        weight = weight_raw * 100  # Scale to 0-100 for threshold alignment
         effective_score = weight * detection["confidence"]
 
         # Determine entity-level sensitivity
@@ -59,8 +75,13 @@ class SensitivityClassifier:
         # Score each entity
         classified = [self.classify_entity(d) for d in detections]
 
-        # Document-level risk = sum of (weight × confidence)
-        risk_score = sum(d["sensitivity_weight"] * d["confidence"] for d in classified)
+        # Document-level absolute risk = sum of (weight × confidence)
+        absolute_risk_score = sum(d["sensitivity_weight"] * d["confidence"] for d in classified)
+
+        # Calculate relative risk score (0-100)
+        # Total possible risk = number of entities * max weight (100)
+        max_possible_risk = len(classified) * 100
+        risk_score = (absolute_risk_score / max_possible_risk) * 100 if max_possible_risk > 0 else 0.0
 
         # Determine risk level
         risk_level = "LOW"
@@ -83,6 +104,7 @@ class SensitivityClassifier:
         recommendations = self._generate_recommendations(risk_level, entity_counts, high_risk)
 
         return {
+            "absolute_risk_score": round(absolute_risk_score, 2),
             "risk_score": round(risk_score, 2),
             "risk_level": risk_level,
             "entity_count": len(classified),

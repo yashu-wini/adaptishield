@@ -6,10 +6,6 @@ logger = logging.getLogger(__name__)
 
 SPACY_LABEL_MAP = {
     "PERSON":   "NAME",
-    "ORG":      "ORGANIZATION",
-    "GPE":      "LOCATION",
-    "LOC":      "LOCATION",
-    "FAC":      "LOCATION",
     "DATE":     "DATE_OF_BIRTH",
     "MONEY":    "CREDIT_CARD",
     "CARDINAL": None,  # Skip generic numbers

@@ -30,7 +30,6 @@ from detection.fusion_engine import FusionEngine
 # Context
 from context.context_validator import ContextValidator
 from context.confidence_engine import ConfidenceEngine
-from context.domain_classifier import FinancialDomainClassifier
 from context.quasi_identifier_engine import QuasiIdentifierEngine
 
 # Sensitivity
@@ -80,8 +79,7 @@ class AdaptiShieldPipeline:
         self.context_validator = ContextValidator()
         self.confidence_engine = ConfidenceEngine()
 
-        # Domain Intelligence (CHANGE 1 — Financial Domain Classification)
-        self.domain_classifier = FinancialDomainClassifier()
+        # Domain Intelligence (CHANGE 1 — Removed Financial Domain Classification)
 
         # Quasi-Identifier Analysis (CHANGE 2 — Re-identification Risk)
         self.quasi_id_engine = QuasiIdentifierEngine()
@@ -177,17 +175,7 @@ class AdaptiShieldPipeline:
         text = self.cleaner.clean(raw_text)
         logger.info(f"  ✅ Stage 1: Text cleaned ({len(text)} chars)")
 
-        # ── Stage 1.5: Domain Classification (CHANGE 1) ──
-        domain_info = self.domain_classifier.classify(text)
-        domain_multiplier = self.domain_classifier.get_domain_risk_multiplier(
-            domain_info["domain"]
-        )
-        logger.info(
-            f"  ✅ Stage 1.5: Domain = {domain_info['domain']} "
-            f"(financial={domain_info['is_financial']}, "
-            f"confidence={domain_info['domain_confidence']}, "
-            f"multiplier={domain_multiplier})"
-        )
+
 
         # ── Stage 2: Detect ─────────────────────────────
         regex_dets = self.regex_detector.detect(text)
@@ -209,8 +197,8 @@ class AdaptiShieldPipeline:
         # This works for ANY content type without domain-specific rules.
         STRUCTURED_PII_TYPES = {
             "EMAIL", "PHONE", "AADHAAR", "PAN", "CREDIT_CARD", "PASSPORT",
-            "BANK_ACCOUNT", "PASSWORD", "VOTER_ID", "DRIVING_LICENSE",
-            "GST_NUMBER", "IFSC_CODE", "UPI_ID", "IP_ADDRESS",
+            "BANK_ACCOUNT", "VOTER_ID", "DRIVING_LICENSE",
+            "GST_NUMBER", "IFSC_CODE", "UPI_ID",
         }
         has_structured_pii = any(
             d["entity_type"] in STRUCTURED_PII_TYPES for d in fused
@@ -247,10 +235,10 @@ class AdaptiShieldPipeline:
 
         # ── Stage 4.5: Quasi-Identifier Correlation (CHANGE 2) ──
         quasi_id_analysis = self.quasi_id_engine.analyze(classified_entities)
-        # Apply domain multiplier and correlation risk to the overall risk score
+        # Apply correlation risk to the overall risk score
         base_risk = risk_analysis["risk_score"]
         correlation_risk = quasi_id_analysis["total_correlation_score"]
-        adjusted_risk = (base_risk * domain_multiplier) + correlation_risk
+        adjusted_risk = min(100.0, base_risk + correlation_risk)
         # Re-classify risk level with adjusted score
         from configs.pii_config import RISK_LEVELS
         adjusted_level = "LOW"
@@ -259,7 +247,6 @@ class AdaptiShieldPipeline:
                 adjusted_level = level
                 break
         risk_analysis["base_risk_score"] = base_risk
-        risk_analysis["domain_multiplier"] = domain_multiplier
         risk_analysis["correlation_risk"] = correlation_risk
         risk_analysis["risk_score"] = round(adjusted_risk, 2)
         risk_analysis["risk_level"] = adjusted_level
@@ -301,8 +288,7 @@ class AdaptiShieldPipeline:
             "input_length": len(raw_text),
             "cleaned_length": len(text),
 
-            # Domain Classification (CHANGE 1)
-            "domain_classification": domain_info,
+
 
             # Detection
             "detection_stats": {
@@ -316,21 +302,21 @@ class AdaptiShieldPipeline:
             # Risk (includes quasi-ID correlation from CHANGE 2)
             "risk_analysis": risk_analysis,
 
-            # Entities (anonymized)
+            # Entities (anonymized + rejected)
             "entities": [
                 {
                     "entity_type": e["entity_type"],
-                    "original_value": e["value"],
-                    "anonymized_value": e.get("anonymized_value", ""),
-                    "strategy": e.get("strategy_applied", ""),
-                    "confidence": e["confidence"],
-                    "sensitivity_level": e.get("sensitivity_level", ""),
+                    "original_value": e.get("value", e.get("original_value", "")),
+                    "anonymized_value": e.get("anonymized_value", "REJECTED/IGNORED"),
+                    "strategy": e.get("strategy_applied", "None"),
+                    "confidence": e.get("confidence", 0.0),
+                    "sensitivity_level": e.get("sensitivity_level", "IGNORED"),
                     "sensitivity_weight": e.get("sensitivity_weight", 0),
                     "effective_score": e.get("effective_score", 0),
                     "source": e.get("source", ""),
                     "context_notes": e.get("context_notes", []),
                 }
-                for e in anonymized_entities
+                for e in anonymized_entities + rejected
             ],
 
             # Output

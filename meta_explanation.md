@@ -444,19 +444,7 @@ The following enhancements were implemented based on faculty feedback to evolve 
 
 **Method:** Keyword-density-based classification using curated financial term lists per sub-domain. The classifier computes the ratio of financial keywords to total words and requires a minimum density threshold (0.5%) to confirm a financial document.
 
-**Sub-domains detected:**
 
-| Sub-Domain | Example Keywords | Risk Multiplier |
-|-----------|-----------------|----------------|
-| BANKING | account, savings, NEFT, RTGS, IFSC | 1.3× |
-| KYC | kyc, identity verification, ekyc | 1.4× |
-| FINTECH | UPI, digital payment, wallet, GPay | 1.2× |
-| TRANSACTION | credited, debited, EMI, UTR | 1.1× |
-| COMPLIANCE | RBI, SEBI, AML, DPDP, PCI-DSS | 1.5× |
-| FRAUD | fraud, phishing, unauthorized, breach | 1.6× |
-| GENERAL | (non-financial fallback) | 1.0× |
-
-**Pipeline Integration:** Runs as **Stage 1.5** (after text cleaning, before detection). The `domain_multiplier` is applied to the final risk score.
 
 **Output fields added to pipeline result:**
 - `domain_classification.is_financial` (bool)

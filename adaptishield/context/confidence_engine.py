@@ -18,13 +18,28 @@ class ConfidenceEngine:
 
     # Co-occurrence boosts: if entity A and B both found, boost B's confidence
     CO_OCCURRENCE_BOOSTS = {
+        # Identity / Basic Profile
         frozenset(["NAME", "EMAIL"]): 0.05,
         frozenset(["NAME", "PHONE"]): 0.05,
         frozenset(["NAME", "ADDRESS"]): 0.07,
-        frozenset(["AADHAAR", "NAME"]): 0.10,
-        frozenset(["PAN", "NAME"]): 0.10,
-        frozenset(["CREDIT_CARD", "NAME"]): 0.08,
-        frozenset(["EMAIL", "PASSWORD"]): 0.15,
+        frozenset(["NAME", "DATE_OF_BIRTH"]): 0.08,
+        frozenset(["NAME", "AGE"]): 0.04,
+        frozenset(["NAME", "GENDER"]): 0.03,
+
+        # Government IDs
+        frozenset(["NAME", "AADHAAR"]): 0.10,
+        frozenset(["NAME", "PAN"]): 0.10,
+        frozenset(["NAME", "PASSPORT"]): 0.10,
+        frozenset(["NAME", "VOTER_ID"]): 0.09,
+        frozenset(["NAME", "DRIVING_LICENSE"]): 0.09,
+
+        # Financial
+        frozenset(["NAME", "CREDIT_CARD"]): 0.08,
+        frozenset(["NAME", "BANK_ACCOUNT"]): 0.08,
+        frozenset(["BANK_ACCOUNT", "IFSC_CODE"]): 0.12,
+        frozenset(["NAME", "UPI_ID"]): 0.06,
+        frozenset(["PHONE", "UPI_ID"]): 0.08,
+
     }
 
     def recalibrate(self, detections: list[dict]) -> list[dict]:

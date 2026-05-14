@@ -16,7 +16,7 @@ const state = {
 const SAMPLES = [
   "Hello, I am Priya Mehta. You can reach me at priya.mehta@gmail.com or +91-9876543210. My Aadhaar is 2345 6789 0123 and PAN is ABCDE1234F.",
   "Name: Priya Mehta | Aadhaar: 2345 6789 0123 | PAN: BVLPM3142K | DOB: 15/03/1988 | Phone: +91-9876543210 | Email: priya.mehta@gmail.com | Bank Account: 1234567890123",
-  "User: admin@company.com | Password: Secure@123! | Credit Card: 4532015112830366 | Aadhaar: 9876 5432 1098"
+  "Email: admin@company.com | Account: 09876543210 | Credit Card: 4532015112830366 | Aadhaar: 9876 5432 1098"
 ];
 
 const PIPE_STEPS = [
@@ -144,7 +144,7 @@ function renderRiskBanner(data) {
   document.getElementById('riskLevel').textContent = risk.risk_level;
   document.getElementById('riskLevel').style.color = meta.color;
   document.getElementById('riskSub').textContent = meta.sub;
-  document.getElementById('rsScore').textContent = (risk.risk_score || 0).toFixed(1);
+  document.getElementById('rsScore').textContent = (risk.risk_score || 0).toFixed(1) + '%';
   document.getElementById('rsEntities').textContent = risk.entity_count;
   document.getElementById('rsTime').textContent = (data.processing_time_ms || 0).toFixed(0) + 'ms';
   document.getElementById('rsEncrypt').textContent = data.encrypted ? '✓ AES-256' : 'No';
@@ -234,7 +234,7 @@ function renderEncryption(data) {
 function updateOverview() {
   document.getElementById('mDocsProcessed').textContent = state.docsProcessed;
   document.getElementById('mEntitiesFound').textContent = state.totalEntities;
-  document.getElementById('mAvgRisk').textContent = state.docsProcessed ? (state.totalRiskScore / state.docsProcessed).toFixed(1) : '—';
+  document.getElementById('mAvgRisk').textContent = state.docsProcessed ? (state.totalRiskScore / state.docsProcessed).toFixed(1) + '%' : '—';
   document.getElementById('mAvgLatency').textContent = state.docsProcessed ? (state.totalLatency / state.docsProcessed).toFixed(0) + 'ms' : '—';
   document.getElementById('recentCount').textContent = state.analyses.length + ' runs';
 
